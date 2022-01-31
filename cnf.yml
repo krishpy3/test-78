@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 task using Cloudformation
+
+Parameters:
+  bucketname:
+    Type: String
+    Default: stelligent-u-laeticia.harperr2
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref bucketname
