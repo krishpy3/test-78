@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  This template instantiates an EventBridge rule to trigger sns on an s3 event
+Parameters:
+  SNSArn:
+    Type: String
+    Description: SNS to send notification to
+Resources:
+  EventRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: codebuild-send-notification
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'SNS:Publish'
+                Resource: !Ref SNSArn
+      RoleName: CodeBuildSNSEventRole
+
+  Event:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Rule to trigger a sns on a successful codebuild copy job
+      EventPattern:
+        source:
+          - aws.codebuild
+        detail-type:
+          - CodeBuild Build State Change
+        detail:
+          build-status:
+            - SUCCEEDED
+          project-name:
+            - esgds-s3-bucket-copy-build
+      State: "ENABLED"
+      RoleArn:
+        Fn::GetAtt:
+          - EventRole
+          - Arn
+      Targets:
+        - Arn: >-
+            arn:aws:sns:us-east-1:938540043867:esg-datacapture-dev-s3copyTopicus-east-1
+          Id: SNS
+          InputTransformer:
+            InputPathsMap:
+              build-id : "$.detail.build-id"
+              project-name: "$.detail.project-name"
+              build-status: "$.detail.build-status"
+            InputTemplate: |
+              "Current status of code project '<project-name>' with Build-ID '<build-id>' is '<build-status>'."
