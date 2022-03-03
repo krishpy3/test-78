@@ -219,10 +219,10 @@ Resources:
                   fi
                   echo "layers_var = ${LAYERS_VAR}"
                 - |
-                  regions=("us-east-1" "us-east-2" "us-east-3" "us-east-4");
-                  for reg in ${regions[@]}; do
-                  /opt/deploy/lambda_fn.py deploy --project ${PROJECT} --app ${APP} --env ${ENV} --version ${BUILD_NUMBER} --runtime ${RUNTIME} --handler ${HANDLER} --memory ${MEMORY} --timeout ${TIMEOUT} --instances ${INSTANCES} --lambda-role ${LAMBDA_ROLE} --cf-template ${CF_TEMPLATE} --region $reg --build-number ${CODEBUILD_BUILD_NUMBER} ${LAYERS_VAR} ${DEBUG}
-                  done;
+                  for reg in 'us-east-1' 'us-east-2' 'ap-southeast-1';
+                    do
+                      /opt/deploy/lambda_fn.py deploy --project ${PROJECT} --app ${APP} --env ${ENV} --version ${BUILD_NUMBER} --runtime ${RUNTIME} --handler ${HANDLER} --memory ${MEMORY} --timeout ${TIMEOUT} --instances ${INSTANCES} --lambda-role ${LAMBDA_ROLE} --cf-template ${CF_TEMPLATE} --region $reg --build-number ${CODEBUILD_BUILD_NUMBER} ${LAYERS_VAR} ${DEBUG}
+                    done;
 #        GitCloneDepth: 1
 #        Location: !Ref GitRepoUrl
         Type: NO_SOURCE
