@@ -1,0 +1,262 @@
+#
+# Source:  https://github.com/moodyssharedservices/cld-mra-esg-devops
+# Author:  Lambrecht, Chris <chris.lambrecht@moodys.com>
+# Maintainer: MRA Tech
+#
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates Code Build Project - Lambda Deploy
+###############################################################################
+# Parameters
+###############################################################################
+Parameters:
+  ProjectName:
+    Type: String
+    Description: the name for the Code Build Project
+    Default: ESG-DTC-WRKFLW-Lambda-Deploy
+  ProjectDesc:
+    Type: String
+    Description: the Code Build Project description
+    Default: Deploy the ESG-DTC Workflow Lambdas
+  ComputeType:
+    Type: String
+    Description: the compute resource to use for the build
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+      - BUILD_GENERAL1_LARGE
+    Default: BUILD_GENERAL1_SMALL
+  DockerImage:
+    Type: String
+    Description: the docker image tag to use for the project
+    Default: 232791766003.dkr.ecr.us-east-1.amazonaws.com/esgc/deploy-solutions:0.0.35
+  BuildDockerImage:
+    Type: String
+    Description: does the build create a docker image?
+    AllowedValues:
+      - false
+      - true
+    Default: false
+  BuildTimeout:
+    Type: Number
+    Description: the number of minutes that the build must complete
+    Default: 10
+  VPCNumber:
+    Type: Number
+    Description: VPC Number
+    Default: 1
+  Project:
+    Type: String
+    Description: Project Name
+    Default: workflow
+  Application:
+    Type: String
+    Description: Application Name
+    Default: workflow
+  AppIdTag:
+    Type: String
+    Description: AppId Within Service Now.  Used for Tagging.  If unknown, use Acct #
+    AllowedValues:
+      - 11666
+    Default: 11666
+  OwnerTag:
+    Type: String
+    Description: Owner, used for Tagging
+    Default: cit_cloud_sre@moodys.com
+  RevenueTag:
+    Type: String
+    Description: Revenue, used for Tagging
+    Default: 'y'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "Code Build Project"
+        Parameters:
+          - ProjectName
+          - ProjectDesc
+          - ComputeType
+          - DockerImage
+          - BuildDockerImage
+          - BuildTimeout
+#          - GitRepoUrl
+      -
+        Label:
+          default: "VPC"
+        Parameters:
+          - VPCNumber
+      -
+        Label:
+          default: "Tagging"
+        Parameters:
+          - Project
+          - Application
+          - AppIdTag
+          - OwnerTag
+          - RevenueTag
+
+###############################################################################
+# Mappings
+###############################################################################
+Mappings:
+  Accounts:
+    "779040837725":
+      AccountEnv: nprd
+    "232791766003":
+      AccountEnv: prd
+###############################################################################
+# Conditions
+###############################################################################
+Conditions:
+  curatedImage: !Or
+    - !Equals [ !Ref DockerImage, "aws/codebuild/standard:5.0" ]
+    - !Equals [ !Ref DockerImage, "aws/codebuild/amazonlinux2-x86_64-standard:3.0" ]
+###############################################################################
+# Resources
+###############################################################################
+Resources:
+  VpcExportsLookup:
+    Type: "Custom::VpcExportsLookup"
+    Properties:
+      ServiceToken: !ImportValue VpcExportsLookup
+      VpcNumber: !Ref VPCNumber
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      BadgeEnabled: false
+      Description: !Ref ProjectDesc
+      Environment:
+        ComputeType: !Ref ComputeType
+        Image: !Ref DockerImage
+        ImagePullCredentialsType: !If [ curatedImage, CODEBUILD, SERVICE_ROLE ]
+        PrivilegedMode: !Ref BuildDockerImage
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: PROJECT
+            Type: PLAINTEXT
+            Value: workflow
+          - Name: APP
+            Type: PLAINTEXT
+            Value: download
+          - Name: ENV
+            Type: PLAINTEXT
+            Value: dev
+          - Name: BUILD_NUMBER
+            Type: PLAINTEXT
+            Value: '1'
+          - Name: RUNTIME
+            Type: PLAINTEXT
+            Value: python3.8
+          - Name: HANDLER
+            Type: PLAINTEXT
+            Value: lambda_function.lambda_handler
+          - Name: MEMORY
+            Type: PLAINTEXT
+            Value: 1024
+          - Name: TIMEOUT
+            Type: PLAINTEXT
+            Value: 900
+          - Name: INSTANCES
+            Type: PLAINTEXT
+            Value: 2
+          - Name: LAMBDA_ROLE
+            Type: PLAINTEXT
+            Value: workflow-{ENV}-workflow-api-role
+          - Name: CF_TEMPLATE
+            Type: PLAINTEXT
+            Value: lambda-alias-vpc.yaml
+          - Name: LAYERS
+            Type: PLAINTEXT
+            Value: ""                        
+          - Name: REGION
+            Type: PLAINTEXT
+            Value: ap-southeast-1
+          - Name: DEBUG
+            Type: PLAINTEXT
+            Value: "" 
+      Name: !Ref ProjectName
+      QueuedTimeoutInMinutes: !Ref BuildTimeout
+      ServiceRole: !ImportValue codebuild-deploy-role-arn
+      Source:
+        BuildSpec: |
+          version: 0.2
+          env:
+            variables:
+              PROJECT: "workflow"
+              APP: "download"
+              ENV: "dev"
+              BUILD_NUMBER: 1
+              RUNTIME: python3.7
+              HANDLER: "lambda_function"
+              REGION: "ap-southeast-1"
+            exported-variables:
+              - APP
+              - ENV
+              - REGION
+              - RUNTIME
+              - HANDLER
+              - MEMORY
+              - TIMEOUT
+              - INSTANCES
+              - LAMBDA_ROLE
+              - CF_TEMPLATE
+              - LAYERS
+              - BUILD_NUMBER
+              - DEBUG
+              - CODEBUILD_BUILD_NUMBER
+          phases:
+            build:
+              commands:
+                - echo ${APP}
+                - |
+                  export LAYERS_VAR="--layers arn:aws:lambda:${REGION}:580247275435:layer:LambdaInsightsExtension:14"
+                  if [ -n "${LAYERS}" ]; then
+                    export LAYERS_VAR="${LAYERS_VAR},${LAYERS}"
+                  fi
+                  echo "layers_var = ${LAYERS_VAR}"
+                - |
+                  regions=("us-east-1" "us-east-2" "us-east-3" "us-east-4");
+                  for reg in ${regions[@]}; do
+                  /opt/deploy/lambda_fn.py deploy --project ${PROJECT} --app ${APP} --env ${ENV} --version ${BUILD_NUMBER} --runtime ${RUNTIME} --handler ${HANDLER} --memory ${MEMORY} --timeout ${TIMEOUT} --instances ${INSTANCES} --lambda-role ${LAMBDA_ROLE} --cf-template ${CF_TEMPLATE} --region $reg --build-number ${CODEBUILD_BUILD_NUMBER} ${LAYERS_VAR} ${DEBUG}
+                  done;
+#        GitCloneDepth: 1
+#        Location: !Ref GitRepoUrl
+        Type: NO_SOURCE
+      TimeoutInMinutes: !Ref BuildTimeout
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue CodeBuildDefaultSG
+        Subnets:
+          - !GetAtt VpcExportsLookup.app-subnet-1-id
+        VpcId: !GetAtt VpcExportsLookup.vpc-id
+      Tags:
+        - Key: Name
+          Value: !Ref ProjectName
+        - Key: project
+          Value: !Ref Project
+        - Key: application
+          Value: !Ref Application
+        - Key: app_id
+          Value: !Ref AppIdTag
+        - Key: owner
+          Value: !Ref OwnerTag
+        - Key: account_env
+          Value: !FindInMap [ Accounts, !Ref "AWS::AccountId", AccountEnv ]
+        - Key: revenue
+          Value: !Ref RevenueTag
+        - Key: StackID
+          Value: !Ref 'AWS::StackId'
+
+###############################################################################
+# Outputs
+###############################################################################
+Outputs:
+  Project:
+    Description: Code Build Project
+    Value: !Ref CodeBuildProject
+    Export:
+      Name: !Sub "${ProjectName}"
