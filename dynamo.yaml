@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Resources:
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: myLambdaRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: Policy_dynamo-stream-lambda
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:Describe*"
+                  - "ssm:PutParameter"
+                  - "ssm:GetParameterHistory"
+                  - "ssm:GetParametersByPath"
+                  - "ssm:GetParameters"
+                  - "ssm:GetParameter"
+                Resource: '*'
+
+  lambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: mylambdaFunction
+      Role: !GetAtt IAMRole.Arn
+      Runtime: python3.8
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          import boto3
+
+          def lambda_handler(events, context):
+              table_name = "workflow-uat-answers"
+              dynamodb = boto3.client('dynamodb')
+              res = dynamodb.describe_table(TableName=table_name)
+              arn = res['Table'].get('LatestStreamArn')
+
+              ssm = boto3.client('ssm')
+              res = ssm.put_parameter(
+                  Name=f'/dynamodb/us-east-1/stream/Dynamodb-stream-arn-entry-uat',
+                  Value=arn,
+                  Type='String')
+              return {'message': "Arn updated in parameter store"}
