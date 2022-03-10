@@ -1,5 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
+Parameters:
+  stage:
+    Type: String
+    Default: dev
+
 Resources:
   IAMRole:
     Type: AWS::IAM::Role
@@ -36,18 +41,55 @@ Resources:
       Runtime: python3.8
       Handler: index.handler
       Code:
-        ZipFile: |
+        ZipFile: !Sub
+          | 
           import boto3
 
-          def lambda_handler(events, context):
-              table_name = "workflow-uat-answers"
+          def handler(events, context):
+              table_name = "workflow-${stage}-answers"
               dynamodb = boto3.client('dynamodb')
               res = dynamodb.describe_table(TableName=table_name)
               arn = res['Table'].get('LatestStreamArn')
 
               ssm = boto3.client('ssm')
               res = ssm.put_parameter(
-                  Name=f'/dynamodb/us-east-1/stream/Dynamodb-stream-arn-entry-uat',
+                  Name=f'/dynamodb/us-east-1/stream/Dynamodb-stream-arn-entry-${stage}',
                   Value=arn,
-                  Type='String')
+                  Type='String',
+                  Overwrite=True)
               return {'message': "Arn updated in parameter store"}
+
+  Event:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Rule to trigger a sns on a successful codebuild copy job
+      EventPattern:
+        source:
+          - aws.dynamodb
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - dynamodb.amazonaws.com
+          eventName:
+            - CreateTable
+            - UpdateTable
+      State: "ENABLED"
+      Targets: 
+        - Arn: 
+            Fn::GetAtt: 
+              - "lambdaFunction"
+              - "Arn"
+          Id: "TargetFunctionV1"
+
+
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Ref "lambdaFunction"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: 
+        Fn::GetAtt: 
+          - "Event"
+          - "Arn"
