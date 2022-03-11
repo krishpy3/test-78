@@ -470,47 +470,36 @@ Resources:
       Role: !GetAtt LambdaIAMRole.Arn
       Runtime: python3.9
       Handler: index.handler
+      Timeout: 300
       Code:
         ZipFile: !Sub
           |
-          import boto3
-          import urllib3
+          from __future__ import print_function
           import json
-          http = urllib3.PoolManager()
+          import boto3
+          import cfnresponse
 
-          def handler(events, context):
-              print(events)
-              table_name = '${Application}-${EnvironmentStage}-${TableNameIdentifier}'
-              dynamodb = boto3.client('dynamodb', region_name='us-east-1')
-              res = dynamodb.describe_table(TableName=table_name)
-              arn = res['Table'].get('LatestStreamArn')
-
-              ssm = boto3.client('ssm', region_name='us-east-1')
-              res = ssm.put_parameter(
-                  Name=f'/dynamodb/us-east-1/stream/Dynamodb-stream-arn-entry-${EnvironmentStage}',
-                  Value=arn,
-                  Type='String',
-                  Overwrite=True)
-              responseUrl = events['ResponseURL']
-              print(responseUrl)
-              responseBody = {
-                'Status' : "SUCCESS",
-                'StackId' : events['StackId'],
-                'RequestId' : events['RequestId'],
-                'LogicalResourceId' : events['LogicalResourceId']
-              }
-              json_responseBody = json.dumps(responseBody)
-              headers = {
-                'content-type' : '',
-                'content-length' : str(len(json_responseBody))
-              }
+          def handler(event, context):
+              print(event, context)
+              response_status = 'SUCCESS'
               try:
-                response = http.request('PUT', responseUrl, headers=headers, body=json_responseBody)
-                print("Status code:", response.status)
+                if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                  table_name = '${Application}-${EnvironmentStage}-${TableNameIdentifier}'
+                  dynamodb = boto3.client('dynamodb', region_name='${AWSRegionReplication}')
+                  res = dynamodb.describe_table(TableName=table_name)
+                  arn = res['Table'].get('LatestStreamArn')
+                  ssm = boto3.client('ssm', region_name='${AWSRegionReplication}')
+                  res = ssm.put_parameter(
+                      Name=f'/dynamodb/${AWSRegionReplication}/stream/Dynamodb-stream-arn-entry-${EnvironmentStage}',
+                      Value=arn,
+                      Type='String',
+                      Overwrite=True)
               except Exception as e:
-                print("send(..) failed executing http.request(..):", e)
-
+                    print('Failed to process:', e)
+                    responseStatus = 'FAILURE'
+              cfnresponse.send(event, context, response_status, {})
               return {'message': "Arn updated in parameter store"}
+
   DynamoDbStreamArnInvokeLambda:
     Condition: isReplicatedToOtherRegion
     Type: 'AWS::CloudFormation::CustomResource'
