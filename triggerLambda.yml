@@ -1,0 +1,533 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Global Dynamodb Table
+Parameters:
+  EnvironmentStage:
+    Type: String
+    Default: dev
+  Project:
+    Type: String
+    Description: Name of project short-hand
+    Default: esg
+  Application:
+    Type: String
+    Description: Base resources
+    Default: workflow
+  EnvironmentStage:
+    Type: String
+    Description: >-
+      The environment tag is used to designate the Environment Stage of the
+      associated AWS resource
+    Default: dev
+  DBBillingMode:
+    Type: String
+    Description: Sets Billing Mode to Provisioned or On-Demand (PAY_PER_REQUEST)
+    AllowedValues:
+      - PAY_PER_REQUEST
+      - PROVISIONED
+    Default: PAY_PER_REQUEST
+  TableNameIdentifier:
+    Type: String
+    Description: DynamoDB table identifier
+    Default: answers
+  AWSRegionReplication:
+    Type: String
+    Description: DynamoDB replication changes
+    AllowedValues:
+      - none
+      - us-east-1
+      - ap-southeast-1
+    Default: us-east-1
+  FixedCapacity:
+    Type: String
+    Description: >-
+      Fixed capacity or autoscaling when billing mode is Provisioned. Ignored if
+      On-Demand
+    AllowedValues:
+      - 'y'
+      - 'n'
+    Default: 'y'
+  ReadCapacity:
+    Type: Number
+    Description: Table Read Capacity Units. Ignored if On-Demand
+    MinValue: 5
+    MaxValue: 10
+    Default: 5
+  ReadCapacityScaling:
+    Type: Number
+    Description: Percent that will trigger scaling. Ignored if On-Demand
+    MinValue: 50
+    MaxValue: 99
+    Default: 90
+  ReadCapacityScalableTargetMax:
+    Type: Number
+    Description: Read Capacity Units to Incrementally Scale. Ignored if On-Demand
+    MinValue: 10
+    MaxValue: 100
+    Default: 10
+  ReadCapacityScalableTargetMin:
+    Type: Number
+    Description: Read Capacity Units to Incrementally Scale. Ignored if On-Demand
+    MinValue: 5
+    MaxValue: 10
+    Default: 5
+  ReadScaleInCoolDown:
+    Type: Number
+    Description: >-
+      Cooldown period in seconds after this scaling activity. Ignored if
+      On-Demand
+    Default: 60
+  ReadScaleOutCoolDown:
+    Type: Number
+    Description: >-
+      Cooldown period in seconds after this scaling activity. Ignored if
+      On-Demand
+    Default: 60
+  WriteCapacity:
+    Type: Number
+    Description: Table Write Capacity Units. Ignored if On-Demand
+    MinValue: 5
+    MaxValue: 10
+    Default: 5
+  WriteCapacityScaling:
+    Type: Number
+    Description: Percent that will trigger scaling. Ignored if On-Demand
+    MinValue: 50
+    MaxValue: 99
+    Default: 90
+  WriteCapacityScalableTargetMax:
+    Type: Number
+    Description: Write Capacity Units to Incrementally Scale. Ignored if On-Demand
+    MinValue: 10
+    MaxValue: 100
+    Default: 10
+  WriteCapacityScalableTargetMin:
+    Type: Number
+    Description: Write Capacity Units to Incrementally Scale. Ignored if On-Demand
+    MinValue: 5
+    MaxValue: 10
+    Default: 5
+  WriteScaleInCoolDown:
+    Type: Number
+    Description: >-
+      Cooldown period in seconds after this scaling activity. Ignored if
+      On-Demand
+    Default: 60
+  WriteScaleOutCoolDown:
+    Type: Number
+    Description: >-
+      Cooldown period in seconds after this scaling activity. Ignored if
+      On-Demand
+    Default: 60
+  StreamViewType:
+    Type: String
+    Description: DynamoDB Streams configuration for a table
+    AllowedValues:
+      - KEYS_ONLY
+      - NEW_AND_OLD_IMAGES
+      - NEW_IMAGE
+      - OLD_IMAGE
+    Default: NEW_AND_OLD_IMAGES
+  AppId:
+    Type: String
+    Description: AppId Within Service Now.  Used for Tagging
+    Default: 11666
+  Owner:
+    Description: email of owner
+    Default: cit_cloud_sre@moodys.com
+    Type: String
+  Revenue:
+    AllowedValues:
+      - 'y'
+      - 'n'
+    Type: String
+    Default: 'y'
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Deployment
+        Parameters:
+          - Project
+          - Application
+          - EnvironmentStage
+      - Label:
+          default: Table
+        Parameters:
+          - DBBillingMode
+          - TableNameIdentifier
+          - AWSRegionReplication
+          - StreamViewType
+      - Label:
+          default: Provisioned Table Params - Ignored if On-Demand
+        Parameters:
+          - FixedCapacity
+          - ReadCapacity
+          - ReadCapacityScaling
+          - ReadCapacityScalableTargetMax
+          - ReadCapacityScalableTargetMin
+          - ReadScaleInCoolDown
+          - ReadScaleOutCoolDown
+          - WriteCapacity
+          - WriteCapacityScaling
+          - WriteCapacityScalableTargetMax
+          - WriteCapacityScalableTargetMin
+          - WriteScaleInCoolDown
+          - WriteScaleOutCoolDown
+      - Label:
+          default: Tagging
+        Parameters:
+          - AppId
+          - Owner
+          - Revenue
+Conditions:
+  isReplicatedToOtherRegion: !Not 
+    - !Or 
+      - !Equals 
+        - !Ref AWSRegionReplication
+        - none
+      - !Equals 
+        - !Ref AWSRegionReplication
+        - 'AWS::Region'
+  isProvisioned: !Equals 
+    - !Ref DBBillingMode
+    - PROVISIONED
+  isFixedCapacity: !Equals 
+    - !Ref FixedCapacity
+    - 'y'
+Resources:
+  DynamoDBTable:
+    Type: 'AWS::DynamoDB::GlobalTable'
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: entity-index-pk
+          AttributeType: S
+        - AttributeName: entity-index-sk
+          AttributeType: S
+        - AttributeName: user-index-pk
+          AttributeType: S
+        - AttributeName: user-index-sk
+          AttributeType: S
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: user-indicator-pk
+          AttributeType: S
+        - AttributeName: user-indicator-sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      BillingMode: !Ref DBBillingMode
+      GlobalSecondaryIndexes:
+        - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-by-user-index'
+          KeySchema:
+            - AttributeName: user-index-pk
+              KeyType: HASH
+            - AttributeName: user-index-sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          WriteProvisionedThroughputSettings: !If 
+            - isProvisioned
+            - WriteCapacityAutoScalingSettings:
+                MaxCapacity: !Ref WriteCapacityScalableTargetMax
+                MinCapacity: !Ref WriteCapacityScalableTargetMin
+                TargetTrackingScalingPolicyConfiguration:
+                  TargetValue: !Ref WriteCapacityScaling
+                  ScaleInCooldown: !Ref WriteScaleInCoolDown
+                  ScaleOutCooldown: !Ref WriteScaleOutCoolDown
+            - !Ref 'AWS::NoValue'
+        - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-by-entity-index'
+          KeySchema:
+            - AttributeName: entity-index-pk
+              KeyType: HASH
+            - AttributeName: entity-index-sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          WriteProvisionedThroughputSettings: !If 
+            - isProvisioned
+            - WriteCapacityAutoScalingSettings:
+                MaxCapacity: !Ref WriteCapacityScalableTargetMax
+                MinCapacity: !Ref WriteCapacityScalableTargetMin
+                TargetTrackingScalingPolicyConfiguration:
+                  TargetValue: !Ref WriteCapacityScaling
+                  ScaleInCooldown: !Ref WriteScaleInCoolDown
+                  ScaleOutCooldown: !Ref WriteScaleOutCoolDown
+            - !Ref 'AWS::NoValue'
+        - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-by-uuid-index'
+          KeySchema:
+            - AttributeName: pk
+              KeyType: HASH
+            - AttributeName: sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          WriteProvisionedThroughputSettings: !If 
+            - isProvisioned
+            - WriteCapacityAutoScalingSettings:
+                MaxCapacity: !Ref WriteCapacityScalableTargetMax
+                MinCapacity: !Ref WriteCapacityScalableTargetMin
+                TargetTrackingScalingPolicyConfiguration:
+                  TargetValue: !Ref WriteCapacityScaling
+                  ScaleInCooldown: !Ref WriteScaleInCoolDown
+                  ScaleOutCooldown: !Ref WriteScaleOutCoolDown
+            - !Ref 'AWS::NoValue'
+        - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-user-by-indicator-index'
+          KeySchema:
+            - AttributeName: user-indicator-pk
+              KeyType: HASH
+            - AttributeName: user-indicator-sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          WriteProvisionedThroughputSettings: !If 
+            - isProvisioned
+            - WriteCapacityAutoScalingSettings:
+                MaxCapacity: !Ref WriteCapacityScalableTargetMax
+                MinCapacity: !Ref WriteCapacityScalableTargetMin
+                TargetTrackingScalingPolicyConfiguration:
+                  TargetValue: !Ref WriteCapacityScaling
+                  ScaleInCooldown: !Ref WriteScaleInCoolDown
+                  ScaleOutCooldown: !Ref WriteScaleOutCoolDown
+            - !Ref 'AWS::NoValue'
+      Replicas:
+        - Region: !Ref 'AWS::Region'
+          ReadProvisionedThroughputSettings: !If 
+            - isProvisioned
+            - !If 
+              - isFixedCapacity
+              - ReadCapacityUnits: !Ref ReadCapacity
+              - ReadCapacityAutoScalingSettings:
+                  MaxCapacity: !Ref ReadCapacityScalableTargetMax
+                  MinCapacity: !Ref ReadCapacityScalableTargetMin
+                  TargetTrackingScalingPolicyConfiguration:
+                    TargetValue: !Ref ReadCapacityScaling
+                    ScaleInCooldown: !Ref ReadScaleInCoolDown
+                    ScaleOutCooldown: !Ref ReadScaleOutCoolDown
+            - !Ref 'AWS::NoValue'
+          GlobalSecondaryIndexes:
+            - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-by-user-index'
+              ReadProvisionedThroughputSettings: !If 
+                - isProvisioned
+                - !If 
+                  - isFixedCapacity
+                  - ReadCapacityUnits: !Ref ReadCapacity
+                  - ReadCapacityAutoScalingSettings:
+                      MaxCapacity: !Ref ReadCapacityScalableTargetMax
+                      MinCapacity: !Ref ReadCapacityScalableTargetMin
+                      TargetTrackingScalingPolicyConfiguration:
+                        TargetValue: !Ref ReadCapacityScaling
+                        ScaleInCooldown: !Ref ReadScaleInCoolDown
+                        ScaleOutCooldown: !Ref ReadScaleOutCoolDown
+                - !Ref 'AWS::NoValue'
+            - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-by-entity-index'
+              ReadProvisionedThroughputSettings: !If 
+                - isProvisioned
+                - !If 
+                  - isFixedCapacity
+                  - ReadCapacityUnits: !Ref ReadCapacity
+                  - ReadCapacityAutoScalingSettings:
+                      MaxCapacity: !Ref ReadCapacityScalableTargetMax
+                      MinCapacity: !Ref ReadCapacityScalableTargetMin
+                      TargetTrackingScalingPolicyConfiguration:
+                        TargetValue: !Ref ReadCapacityScaling
+                        ScaleInCooldown: !Ref ReadScaleInCoolDown
+                        ScaleOutCooldown: !Ref ReadScaleOutCoolDown
+                - !Ref 'AWS::NoValue'
+            - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-by-uuid-index'
+              ReadProvisionedThroughputSettings: !If 
+                - isProvisioned
+                - !If 
+                  - isFixedCapacity
+                  - ReadCapacityUnits: !Ref ReadCapacity
+                  - ReadCapacityAutoScalingSettings:
+                      MaxCapacity: !Ref ReadCapacityScalableTargetMax
+                      MinCapacity: !Ref ReadCapacityScalableTargetMin
+                      TargetTrackingScalingPolicyConfiguration:
+                        TargetValue: !Ref ReadCapacityScaling
+                        ScaleInCooldown: !Ref ReadScaleInCoolDown
+                        ScaleOutCooldown: !Ref ReadScaleOutCoolDown
+                - !Ref 'AWS::NoValue'
+            - IndexName: !Sub 'workflow-${EnvironmentStage}-answers-user-by-indicator-index'
+              ReadProvisionedThroughputSettings: !If 
+                - isProvisioned
+                - !If 
+                  - isFixedCapacity
+                  - ReadCapacityUnits: !Ref ReadCapacity
+                  - ReadCapacityAutoScalingSettings:
+                      MaxCapacity: !Ref ReadCapacityScalableTargetMax
+                      MinCapacity: !Ref ReadCapacityScalableTargetMin
+                      TargetTrackingScalingPolicyConfiguration:
+                        TargetValue: !Ref ReadCapacityScaling
+                        ScaleInCooldown: !Ref ReadScaleInCoolDown
+                        ScaleOutCooldown: !Ref ReadScaleOutCoolDown
+                - !Ref 'AWS::NoValue'
+          Tags:
+            - Key: owner
+              Value: !Ref Owner
+            - Key: application
+              Value: !Join 
+                - '-'
+                - - !Ref Project
+                  - !Ref Application
+            - Key: project
+              Value: !Ref Project
+            - Key: environment
+              Value: !Ref EnvironmentStage
+            - Key: revenue
+              Value: !Ref Revenue
+            - Key: app_id
+              Value: !Ref AppId
+            - Key: StackID
+              Value: !Ref 'AWS::StackId'
+        - !If 
+          - isReplicatedToOtherRegion
+          - Region: !Ref AWSRegionReplication
+            ReadProvisionedThroughputSettings: !If 
+              - isProvisioned
+              - !If 
+                - isFixedCapacity
+                - ReadCapacityUnits: !Ref ReadCapacity
+                - ReadCapacityAutoScalingSettings:
+                    MaxCapacity: !Ref ReadCapacityScalableTargetMax
+                    MinCapacity: !Ref ReadCapacityScalableTargetMin
+                    TargetTrackingScalingPolicyConfiguration:
+                      TargetValue: !Ref ReadCapacityScaling
+                      ScaleInCooldown: !Ref ReadScaleInCoolDown
+                      ScaleOutCooldown: !Ref ReadScaleOutCoolDown
+              - !Ref 'AWS::NoValue'
+            Tags:
+              - Key: owner
+                Value: !Ref Owner
+              - Key: application
+                Value: !Join 
+                  - '-'
+                  - - !Ref Project
+                    - !Ref Application
+              - Key: project
+                Value: !Ref Project
+              - Key: environment
+                Value: !Ref EnvironmentStage
+              - Key: revenue
+                Value: !Ref Revenue
+              - Key: app_id
+                Value: !Ref AppId
+              - Key: StackID
+                Value: !Ref 'AWS::StackId'
+          - !Ref 'AWS::NoValue'
+      WriteProvisionedThroughputSettings: !If 
+        - isProvisioned
+        - WriteCapacityAutoScalingSettings:
+            MaxCapacity: !Ref WriteCapacityScalableTargetMax
+            MinCapacity: !Ref WriteCapacityScalableTargetMin
+            TargetTrackingScalingPolicyConfiguration:
+              TargetValue: !Ref WriteCapacityScaling
+              ScaleInCooldown: !Ref WriteScaleInCoolDown
+              ScaleOutCooldown: !Ref WriteScaleOutCoolDown
+        - !Ref 'AWS::NoValue'
+      TableName: !Sub '${Application}-${EnvironmentStage}-${TableNameIdentifier}'
+      StreamSpecification:
+        StreamViewType: !Ref StreamViewType
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+  LambdaIAMRole:
+    Condition: isReplicatedToOtherRegion
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: myLambdaRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: Policy_dynamo-stream-lambda
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:Describe*'
+                  - 'ssm:PutParameter'
+                  - 'ssm:GetParameterHistory'
+                  - 'ssm:GetParametersByPath'
+                  - 'ssm:GetParameters'
+                  - 'ssm:GetParameter'
+                Resource: '*'
+  StreamArnlambdaFunction:
+    Condition: isReplicatedToOtherRegion
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: Replication-StreamArn
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: python3.9
+      Handler: index.handler
+      Code:
+        ZipFile: !Sub
+          |
+          import boto3
+          import urllib3
+          import json
+          http = urllib3.PoolManager()
+
+          def handler(events, context):
+              print(events)
+              table_name = '${Application}-${EnvironmentStage}-${TableNameIdentifier}'
+              dynamodb = boto3.client('dynamodb', region_name='us-east-1')
+              res = dynamodb.describe_table(TableName=table_name)
+              arn = res['Table'].get('LatestStreamArn')
+
+              ssm = boto3.client('ssm', region_name='us-east-1')
+              res = ssm.put_parameter(
+                  Name=f'/dynamodb/us-east-1/stream/Dynamodb-stream-arn-entry-${EnvironmentStage}',
+                  Value=arn,
+                  Type='String',
+                  Overwrite=True)
+              responseUrl = events['ResponseURL']
+              print(responseUrl)
+              responseBody = {
+                'Status' : "SUCCESS",
+                'StackId' : events['StackId'],
+                'RequestId' : events['RequestId'],
+                'LogicalResourceId' : events['LogicalResourceId']
+              }
+              json_responseBody = json.dumps(responseBody)
+              headers = {
+                'content-type' : '',
+                'content-length' : str(len(json_responseBody))
+              }
+              try:
+                response = http.request('PUT', responseUrl, headers=headers, body=json_responseBody)
+                print("Status code:", response.status)
+              except Exception as e:
+                print("send(..) failed executing http.request(..):", e)
+
+              return {'message': "Arn updated in parameter store"}
+  DynamoDbStreamArnInvokeLambda:
+    Condition: isReplicatedToOtherRegion
+    Type: 'AWS::CloudFormation::CustomResource'
+    DependsOn:
+      - StreamArnlambdaFunction
+      - DynamoDBTable
+    Version: '1.0'
+    Properties:
+      ServiceToken: !GetAtt StreamArnlambdaFunction.Arn
+      Region: !Ref "AWSRegionReplication"
+
+Outputs:
+  TableArn:
+    Description: The Dynamodb Table Arn
+    Value: !GetAtt DynamoDBTable.Arn
+  TableStreamArn:
+    Description: Dynamodb stream Arn
+    Value: !GetAtt DynamoDBTable.StreamArn
+    Export:
+      Name: !Sub '${Application}-${EnvironmentStage}-${TableNameIdentifier}-StreamArn'
