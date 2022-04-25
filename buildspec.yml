@@ -12,7 +12,7 @@ phases:
       - mkdir scripts
       - echo export CBN=$CODEBUILD_BUILD_NUMBER > ./scripts/export-a-var.sh
       - chmod +x ./scripts/export-a-var.sh
-      - ./scripts/export-a-var.sh
+      - . ./scripts/export-a-var.sh
       - echo $CBN 
   build:
     commands:
