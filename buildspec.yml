@@ -1,0 +1,19 @@
+version: 0.2
+env:
+  variables:
+    DOTNET_ROOT: /root/.dotnet
+phases:
+  install:
+    runtime-versions:
+      dotnet: 3.1
+  pre_build:
+    commands:
+      - echo Restore started on `date`
+      - mkdir scripts
+      - echo export CBN=$CODEBUILD_BUILD_NUMBER > ./scripts/export-a-var.sh
+      - chmod +x ./scripts/export-a-var.sh
+      - ./scripts/export-a-var.sh
+      - echo $CBN 
+  build:
+    commands:
+      - echo Build started on `date`
