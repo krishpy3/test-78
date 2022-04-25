@@ -1,0 +1,13 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo Restore started on `date`
+  build:
+    commands:
+      - chmod +x ./scripts/export-a-var.sh
+      - . ./scripts/export-a-var.sh
+      - echo $CBN
+      - echo $CBN2
+      - echo #{BuildVariables.CODEBUILD_BUILD_NUMBER}
+      - echo #{SourceVariables.CommitMessage}
