@@ -2,6 +2,8 @@ version: 0.2
 env:
   variables:
     DOTNET_ROOT: /root/.dotnet
+  exported-variables:
+    - CODEBUILD_BUILD_NUMBER
 phases:
   install:
     runtime-versions:
