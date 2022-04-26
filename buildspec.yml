@@ -16,4 +16,7 @@ phases:
       - echo $CBN 
   build:
     commands:
-      - echo Build started on `date`
+      - echo Build started on `date`  
+artifacts:
+  files:
+    - '**/*'
